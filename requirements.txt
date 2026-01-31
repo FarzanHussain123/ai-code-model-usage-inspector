@@ -3,3 +3,8 @@ openai
 pydantic
 transformers
 torch
+accelerate 
+langchain-community
+reportlab
+pandas
+openpyxl
