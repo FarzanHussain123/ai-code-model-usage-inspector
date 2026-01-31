@@ -1,3 +1,11 @@
+from app.standards.mapper import map_risks_to_standards
+
+from app.chains.risk_enrichment import build_risk_enrichment_chain
+
+from app.detectors.prompt_risk_detector import assess_prompt_risks
+
+from app.detectors.prompt_extractor import extract_prompts
+
 from app.chains.model_enrichment import build_model_enrichment_chain
 import json
 
@@ -33,12 +41,12 @@ def run_model_detection(repo_path: str):
     code_files = load_source_code(repo_path)
 
     if not code_files:
-        return {"models": []}
+        return {
+            "models": [],
+            "prompts": []
+        }
 
-    # 2. Serialize for LLM
-    serialized_code = serialize_codebase(code_files)
-
-    # 3. Static detection (deterministic)
+    # 2. Static model detection
     static_results = []
 
     for file in code_files:
@@ -49,18 +57,71 @@ def run_model_detection(repo_path: str):
             )
         )
 
-    # Convert to dict for LLM
+    # 3. Prompt extraction (ALWAYS runs)
+    all_prompts = []
+
+    for file in code_files:
+        all_prompts.extend(
+            extract_prompts(
+                file_path=file["file_path"],
+                content=file["content"]
+            )
+        )
+
+    # 4. Try LangChain enrichment (OPTIONAL, MODELS ONLY)
+    enriched_models = static_results
+
     static_payload = {
         "models": [m.dict() for m in static_results]
     }
 
-    # OPTIONAL: LangChain enrichment (best-effort)
     try:
         enrichment_chain = build_model_enrichment_chain()
         enriched = enrichment_chain.invoke({
             "detections": json.dumps(static_payload, indent=2)
         })
-        return enriched
+
+        # If enrichment succeeds, use enriched models
+        enriched_models = enriched.models
+
     except Exception:
-        # Fallback to static results if LLM fails
-        return {"models": static_results}
+        # If enrichment fails, fall back silently
+        pass
+
+    # 5. Prompt risk detection
+    prompt_risks = assess_prompt_risks(all_prompts)
+
+    # 8. LangChain risk enrichment (OPTIONAL)
+    enriched_risks = prompt_risks
+
+    if prompt_risks:
+        try:
+            enrichment_chain = build_risk_enrichment_chain()
+            risk_payload = [
+                {
+                    "file": r["file"],
+                    "original_risk": r["risk"],
+                    "severity": r["severity"]
+                }
+                for r in prompt_risks
+            ]
+
+            enriched = enrichment_chain.invoke({
+                "risks": json.dumps(risk_payload, indent=2)
+            })
+
+            enriched_risks = enriched.risks
+        except Exception as e:
+            print("Risk enrichment failed:", e)
+
+
+    # 6. Final unified return (IMPORTANT)
+    standards_report = map_risks_to_standards(enriched_risks)
+
+    return {
+        "models": enriched_models,
+        "prompts": all_prompts,
+        "prompt_risks": prompt_risks,
+        "enriched_risks": enriched_risks,
+        "standards_mapping": standards_report
+    }
