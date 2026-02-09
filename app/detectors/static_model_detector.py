@@ -31,7 +31,7 @@ def detect_models_from_code(file_path: str, content: str) -> List[DetectedModel]
             )
         )
 
-    # ---- Hugging Face detection ----
+    # ---- Hugging Face LLM detection ----
     if HF_MODEL_PATTERN.search(content):
         model_match = HF_MODEL_NAME_PATTERN.search(content)
         model_name = model_match.group(1) if model_match else "unknown"
@@ -46,8 +46,7 @@ def detect_models_from_code(file_path: str, content: str) -> List[DetectedModel]
             )
         )
 
-
-    # ---- LangChain detection ----
+    # ---- LangChain (generic) ----
     if LANGCHAIN_PATTERN.search(content):
         detected.append(
             DetectedModel(
@@ -59,4 +58,53 @@ def detect_models_from_code(file_path: str, content: str) -> List[DetectedModel]
             )
         )
 
+    # ---- LangChain HuggingFace Embeddings ----
+    if re.search(r'HuggingFaceEmbeddings\s*\(', content):
+        match = re.search(r'model_name\s*=\s*["\']([^"\']+)["\']', content)
+        model_name = match.group(1) if match else "unknown-embedding-model"
+
+        detected.append(
+            DetectedModel(
+                model_name=model_name,
+                provider="Hugging Face",
+                framework="langchain-embeddings",
+                file=file_path,
+                confidence=0.9
+            )
+        )
+
+    # ---- SentenceTransformers ----
+    if re.search(r'SentenceTransformer\s*\(', content):
+        match = re.search(r'SentenceTransformer\(\s*["\']([^"\']+)["\']', content)
+        model_name = match.group(1) if match else "unknown-sentence-transformer"
+
+        detected.append(
+            DetectedModel(
+                model_name=model_name,
+                provider="Hugging Face",
+                framework="sentence-transformers",
+                file=file_path,
+                confidence=0.9
+            )
+        )
+
+    # ---- LlamaIndex Hugging Face Embeddings ----
+    if re.search(r'HuggingFaceEmbedding\s*\(', content) and \
+    re.search(r'llama_index\.embeddings', content):
+
+        match = re.search(r'model_name\s*=\s*["\']([^"\']+)["\']', content)
+        model_name = match.group(1) if match else "unknown-llamaindex-embedding"
+
+        detected.append(
+            DetectedModel(
+                model_name=model_name,
+                provider="Hugging Face",
+                framework="llama-index",
+                file=file_path,
+                confidence=0.95
+            )
+        )
+
+
     return detected
+
