@@ -8,3 +8,5 @@ langchain-community
 reportlab
 pandas
 openpyxl
+langchain-openai
+langchain-huggingface
